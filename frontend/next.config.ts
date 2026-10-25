@@ -16,7 +16,9 @@ const nextConfig: NextConfig = {
     agentUpgrade: "security",
   },
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
+    let backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
+    // Sanitize: strip trailing slashes and /api if accidentally included
+    backendUrl = backendUrl.replace(/\/+$/, '').replace(/\/api$/, '');
     return [
       {
         source: "/api/:path*",

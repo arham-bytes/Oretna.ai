@@ -18,8 +18,10 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// Request logger
+// Request normalizer & logger
 app.use((req, res, next) => {
+  // Normalize double slashes or accidental duplicate /api/api
+  req.url = req.url.replace(/\/{2,}/g, '/').replace(/^\/api\/api\//, '/api/');
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
@@ -42,10 +44,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/research', researchRoutes);
-app.use('/api/survey', surveyRoutes);
+// API Routes (supports both /api/* and root aliases)
+app.use(['/api/auth', '/auth'], authRoutes);
+app.use(['/api/research', '/research'], researchRoutes);
+app.use(['/api/survey', '/survey'], surveyRoutes);
 
 // 404 Handler
 app.use((req, res) => {
