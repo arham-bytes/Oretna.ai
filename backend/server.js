@@ -11,7 +11,27 @@ const app = express();
 // Middlewares
 app.use(
   cors({
-    origin: config.frontendUrl,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like server-side Next.js rewrites, curl)
+      if (!origin) return callback(null, true);
+
+      const normalizedOrigin = origin.replace(/\/+$/, '');
+      const configuredFrontend = config.frontendUrl?.replace(/\/+$/, '');
+
+      // Allow configured frontend, localhost, Vercel deployments, or oretna.ai
+      if (
+        !configuredFrontend ||
+        normalizedOrigin === configuredFrontend ||
+        normalizedOrigin.endsWith('.vercel.app') ||
+        normalizedOrigin.includes('oretna.ai') ||
+        normalizedOrigin.includes('localhost') ||
+        normalizedOrigin.includes('127.0.0.1')
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
