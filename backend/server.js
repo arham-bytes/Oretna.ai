@@ -24,7 +24,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
+// Root & Health check
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    message: 'Oretna.ai Backend API is running',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
