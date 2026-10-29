@@ -10,6 +10,62 @@ interface AuthCardProps {
   resetToken?: string;
 }
 
+async function parseApiResponse(res: Response): Promise<{ ok: boolean; data: any; error?: string }> {
+  if (res.status === 429) {
+    return {
+      ok: false,
+      data: null,
+      error: 'Too many requests. Please wait a moment before trying again.',
+    };
+  }
+
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return {
+      ok: false,
+      data: null,
+      error: 'Server is temporarily unavailable. Please try again shortly.',
+    };
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  let data: any = null;
+
+  if (contentType.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  } else {
+    try {
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        if (text && text.trim().length > 0 && text.trim().length < 120 && !text.includes('<html')) {
+          data = { error: text.trim() };
+        }
+      }
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok) {
+    const errorMsg =
+      data?.error ||
+      data?.message ||
+      (res.status === 401
+        ? 'Invalid email address or password.'
+        : res.status === 400
+        ? 'Please check your information and try again.'
+        : 'Request failed. Please try again.');
+    return { ok: false, data, error: errorMsg };
+  }
+
+  return { ok: true, data: data || {} };
+}
+
 export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'reset'>(initialMode);
@@ -36,14 +92,14 @@ export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
   useEffect(() => {
     if (mode === 'reset' && resetToken) {
       fetch(`/api/auth/verify-reset-token?token=${resetToken}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.valid) {
+        .then(async (res) => {
+          const result = await parseApiResponse(res);
+          if (result.ok && result.data?.valid) {
             setTokenValid(true);
-            if (data.email) setEmail(data.email);
+            if (result.data.email) setEmail(result.data.email);
           } else {
             setTokenValid(false);
-            setError(data.error || 'This reset link has expired or is invalid.');
+            setError(result.error || result.data?.error || 'This reset link has expired or is invalid.');
           }
         })
         .catch(() => {
@@ -68,6 +124,7 @@ export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError(null);
     setSuccessMessage(null);
     setDevResetUrl(null);
@@ -101,10 +158,11 @@ export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ firstName, lastName, email, password, confirmPassword }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Registration failed');
+        const result = await parseApiResponse(res);
+        if (!result.ok) {
+          throw new Error(result.error || 'Registration failed');
         }
+        const data = result.data;
         const destination = data.redirectTo || (data.surveyCompleted ? '/onboarding/thank-you' : '/onboarding/survey');
         router.push(destination);
       } else if (mode === 'login') {
@@ -113,10 +171,11 @@ export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Invalid credentials');
+        const result = await parseApiResponse(res);
+        if (!result.ok) {
+          throw new Error(result.error || 'Invalid credentials');
         }
+        const data = result.data;
         const destination = data.redirectTo || (data.surveyCompleted ? '/onboarding/thank-you' : '/onboarding/survey');
         router.push(destination);
       } else if (mode === 'forgot') {
@@ -125,10 +184,11 @@ export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to request password reset');
+        const result = await parseApiResponse(res);
+        if (!result.ok) {
+          throw new Error(result.error || 'Failed to request password reset');
         }
+        const data = result.data;
         setSuccessMessage(data.message || 'If that email address is registered, we have sent a reset link.');
         if (data.previewUrl) {
           setDevResetUrl(data.previewUrl);
@@ -139,9 +199,9 @@ export default function AuthCard({ initialMode, resetToken }: AuthCardProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: resetToken, password, confirmPassword }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to reset password');
+        const result = await parseApiResponse(res);
+        if (!result.ok) {
+          throw new Error(result.error || 'Failed to reset password');
         }
         setSuccessMessage('Password reset successfully! Redirecting to login in 2 seconds...');
         setTimeout(() => {
